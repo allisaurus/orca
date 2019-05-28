@@ -16,11 +16,14 @@
 
 package com.netflix.spinnaker.orca.clouddriver.tasks.providers.ecs
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.netflix.spinnaker.kork.artifacts.model.Artifact
 import com.netflix.spinnaker.orca.clouddriver.tasks.servergroup.ServerGroupCreator
 import com.netflix.spinnaker.orca.kato.tasks.DeploymentDetailsAware
 import com.netflix.spinnaker.orca.pipeline.model.DockerTrigger
 import com.netflix.spinnaker.orca.pipeline.model.Execution.ExecutionType
 import com.netflix.spinnaker.orca.pipeline.model.Stage
+import com.netflix.spinnaker.orca.pipeline.util.ArtifactResolver
 import groovy.util.logging.Slf4j
 import org.springframework.stereotype.Component
 
@@ -32,6 +35,9 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
   final boolean katoResultExpected = false
 
   final Optional<String> healthProviderName = Optional.of("ecs")
+
+  final ObjectMapper mapper
+  final ArtifactResolver artifactResolver
 
   @Override
   List<Map> getOperations(Stage stage) {
@@ -91,6 +97,8 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
       }
     }
 
+    operation.taskDefinitionArtifact = getTaskDefArtifact(stage, operation.taskDefArtifact)
+
     return [[(ServerGroupCreator.OPERATION): operation]]
   }
 
@@ -100,5 +108,21 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
     } else {
       return "$repo:$tag"
     }
+  }
+
+  private Artifact getTaskDefArtifact(Stage stage, Object input) {
+    TaskDefinitionArtifact taskDefArtifactInput = mapper.convertValue(input, TaskDefinitionArtifact.class)
+
+    Artifact taskDef = artifactResolver.getBoundArtifactForStage(
+      stage,
+      taskDefArtifactInput.artifactId,
+      taskDefArtifactInput.artifact)
+
+    return taskDef
+  }
+
+  private static class TaskDefinitionArtifact {
+    private String artifactId
+    private Artifact artifact
   }
 }
