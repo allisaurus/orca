@@ -97,7 +97,9 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
       }
     }
 
-    operation.taskDefinitionArtifact = getTaskDefArtifact(stage, operation.taskDefArtifact)
+    if (operation.useTaskDefinitionArtifact) {
+      operation.taskDefinitionArtifact = getTaskDefArtifact(stage, operation.taskDefArtifact)
+    }
 
     return [[(ServerGroupCreator.OPERATION): operation]]
   }
