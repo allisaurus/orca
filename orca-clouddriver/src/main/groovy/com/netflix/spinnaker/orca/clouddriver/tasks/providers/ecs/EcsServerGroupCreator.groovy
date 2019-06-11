@@ -52,42 +52,7 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
     def imageDescription = (Map<String, Object>) operation.imageDescription
 
     if (imageDescription) {
-      if (imageDescription.fromContext) {
-        if (stage.execution.type == ExecutionType.ORCHESTRATION) {
-          // Use image from specific "find image from tags" stage
-          def imageStage = getAncestors(stage, stage.execution).find {
-            it.refId == imageDescription.stageId && it.context.containsKey("amiDetails")
-          }
-
-          if (!imageStage) {
-            throw new IllegalStateException("No image stage found in context for $imageDescription.imageLabelOrSha.")
-          }
-
-          imageDescription.imageId = imageStage.context.amiDetails.imageId.value.get(0).toString()
-        }
-      }
-
-      if (imageDescription.fromTrigger) {
-        if (stage.execution.type == ExecutionType.PIPELINE) {
-          def trigger = stage.execution.trigger
-
-          if (trigger instanceof DockerTrigger && trigger.account == imageDescription.account && trigger.repository == imageDescription.repository) {
-            imageDescription.tag = trigger.tag
-          }
-
-          imageDescription.imageId = buildImageId(imageDescription.registry, imageDescription.repository, imageDescription.tag)
-        }
-
-        if (!imageDescription.tag) {
-          throw new IllegalStateException("No tag found for image ${imageDescription.registry}/${imageDescription.repository} in trigger context.")
-        }
-      }
-
-      if (!imageDescription.imageId) {
-        imageDescription.imageId = buildImageId(imageDescription.registry, imageDescription.repository, imageDescription.tag)
-      }
-
-      operation.dockerImageAddress = imageDescription.imageId
+      operation.dockerImageAddress = getImageAddressFromDescription(imageDescription, stage)
     } else if (!operation.dockerImageAddress) {
       // Fall back to previous behavior: use image from any previous "find image from tags" stage by default
       def bakeStage = getPreviousStageWithImage(stage, operation.region, cloudProvider)
@@ -121,6 +86,45 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
       taskDefArtifactInput.artifact)
 
     return taskDef
+  }
+
+  private String getImageAddressFromDescription(Map<String, Object> description, Stage givenStage) {
+    if (description.fromContext) {
+      if (givenStage.execution.type == ExecutionType.ORCHESTRATION) {
+        // Use image from specific "find image from tags" stage
+        def imageStage = getAncestors(givenStage, givenStage.execution).find {
+          it.refId == description.stageId && it.context.containsKey("amiDetails")
+        }
+
+        if (!imageStage) {
+          throw new IllegalStateException("No image stage found in context for $description.imageLabelOrSha.")
+        }
+
+        description.imageId = imageStage.context.amiDetails.imageId.value.get(0).toString()
+      }
+    }
+
+    if (description.fromTrigger) {
+      if (givenStage.execution.type == ExecutionType.PIPELINE) {
+        def trigger = givenStage.execution.trigger
+
+        if (trigger instanceof DockerTrigger && trigger.account == description.account && trigger.repository == description.repository) {
+          description.tag = trigger.tag
+        }
+
+        description.imageId = buildImageId(description.registry, description.repository, description.tag)
+      }
+
+      if (!description.tag) {
+        throw new IllegalStateException("No tag found for image ${description.registry}/${description.repository} in trigger context.")
+      }
+    }
+
+    if (!description.imageId) {
+      description.imageId = buildImageId(description.registry, description.repository, description.tag)
+    }
+
+    return description.imageId
   }
 
   private static class TaskDefinitionArtifact {
