@@ -18,14 +18,17 @@ package com.netflix.spinnaker.orca.clouddriver.tasks.providers.ecs
 import com.google.common.collect.Maps
 import spock.lang.Specification
 import spock.lang.Subject
+import com.netflix.spinnaker.kork.artifacts.model.Artifact
 import com.netflix.spinnaker.orca.pipeline.model.Execution
 import com.netflix.spinnaker.orca.pipeline.model.Execution.ExecutionType
+import com.netflix.spinnaker.orca.pipeline.util.ArtifactResolver
 import static com.netflix.spinnaker.orca.test.model.ExecutionBuilder.stage
 
 class EcsServerGroupCreatorSpec extends Specification {
 
   @Subject
-  def creator = new EcsServerGroupCreator()
+  ArtifactResolver mockResolver
+  EcsServerGroupCreator creator
   def stage = stage {}
 
   def deployConfig = [
@@ -34,6 +37,8 @@ class EcsServerGroupCreatorSpec extends Specification {
   ]
 
   def setup() {
+    mockResolver = Stub(ArtifactResolver)
+    creator = new EcsServerGroupCreator(mockResolver)
     stage.execution.stages.add(stage)
     stage.context = deployConfig
   }
@@ -65,4 +70,95 @@ class EcsServerGroupCreatorSpec extends Specification {
       it.containsKey("createServerGroup")
     }.createServerGroup == expected
   }
+
+  def "creates operation from context image"() {
+    given:
+    def (testReg, testRepo, testTag) = ["myregistry.io", "myrepo", "latest"]
+    def parentStageId = "PARENTID123"
+    def testDescription = [
+      fromContext: "true",
+      stageId    : parentStageId,
+      registry   : testReg,
+      repository : testRepo,
+      tag        : testTag
+    ]
+
+    def parentStage = stage {}
+    parentStage.id = parentStageId
+    parentStage.refId = parentStageId
+    parentStage.context.amiDetails = [imageId: [value: ["$testReg/$testRepo:$testTag"]]]
+
+    stage.context.imageDescription = testDescription
+    stage.parentStageId = parentStageId
+    stage.execution = new Execution(ExecutionType.ORCHESTRATION, 'ecs')
+    stage.execution.stages.add(parentStage)
+
+    def expected = Maps.newHashMap(deployConfig)
+    expected.dockerImageAddress = "$testReg/$testRepo:$testTag"
+
+    when:
+    def operations = creator.getOperations(stage)
+
+    then:
+    operations.find {
+      it.containsKey("createServerGroup")
+    }.createServerGroup == expected
+  }
+
+  def "creates operation from previous 'find image from tags' stage"() {
+    given:
+    def (testReg, testRepo, testTag, testRegion) = ["myregistry.io", "myrepo", "latest", "us-west-2"]
+    def parentStageId = "PARENTID123"
+
+    def parentStage = stage {}
+    parentStage.id = parentStageId
+    parentStage.context.region = testRegion
+    parentStage.context.cloudProviderType = "ecs"
+    parentStage.context.amiDetails = [imageId: [value: ["$testReg/$testRepo:$testTag"]]]
+
+    stage.context.region = testRegion
+    stage.parentStageId = parentStageId
+    stage.execution = new Execution(ExecutionType.PIPELINE, 'ecs')
+    stage.execution.stages.add(parentStage)
+
+    def expected = Maps.newHashMap(deployConfig)
+    expected.dockerImageAddress = "$testReg/$testRepo:$testTag"
+
+    when:
+    def operations = creator.getOperations(stage)
+
+    then:
+    operations.find {
+      it.containsKey("createServerGroup")
+    }.createServerGroup == expected
+  }
+
+  def "creates operation from taskDefinitionArtifact provided as an ID"() {
+    given:
+    def testArtifactId = "aaaa-bbbb-cccc-dddd"
+    def taskDefArtifact = [
+      artifactId: testArtifactId
+    ]
+    Artifact resolvedArtifact = new Artifact().builder().type('s3/object').name('s3://testfile.json').build()
+    mockResolver.getBoundArtifactForStage(stage, testArtifactId, null) >> resolvedArtifact
+    stage.execution = new Execution(ExecutionType.PIPELINE, 'ecs')
+    stage.context.useTaskDefinitionArtifact = true
+    stage.context.taskDefinitionArtifact = taskDefArtifact
+
+
+    def expected = Maps.newHashMap(deployConfig)
+    expected.resolvedTaskDefinitionArtifact = resolvedArtifact
+
+    when:
+    def operations = creator.getOperations(stage)
+
+    then:
+    operations.find {
+      it.containsKey("createServerGroup")
+    }.createServerGroup == expected
+  }
+
+  /*def "creates operation from taskDefinitionArtifact provided as an object"() {
+
+  }*/
 }

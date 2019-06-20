@@ -25,6 +25,7 @@ import com.netflix.spinnaker.orca.pipeline.model.Execution.ExecutionType
 import com.netflix.spinnaker.orca.pipeline.model.Stage
 import com.netflix.spinnaker.orca.pipeline.util.ArtifactResolver
 import groovy.util.logging.Slf4j
+import javax.annotation.Nullable
 import org.springframework.stereotype.Component
 
 @Slf4j
@@ -36,8 +37,12 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
 
   final Optional<String> healthProviderName = Optional.of("ecs")
 
-  final ObjectMapper mapper
+  final ObjectMapper mapper = new ObjectMapper()
   final ArtifactResolver artifactResolver
+
+  EcsServerGroupCreator(ArtifactResolver artifactResolver) {
+    this.artifactResolver = artifactResolver
+  }
 
   @Override
   List<Map> getOperations(Stage stage) {
@@ -63,7 +68,11 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
     }
 
     if (operation.useTaskDefinitionArtifact) {
-      operation.taskDefinitionArtifact = getTaskDefArtifact(stage, operation.taskDefArtifact)
+      if (operation.taskDefinitionArtifact) {
+        operation.resolvedTaskDefinitionArtifact = getTaskDefArtifact(stage, operation.taskDefinitionArtifact)
+      } else {
+        throw new IllegalStateException("No task definition artifact found in context for operation.")
+      }
     }
 
     return [[(ServerGroupCreator.OPERATION): operation]]
@@ -83,7 +92,8 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
     Artifact taskDef = artifactResolver.getBoundArtifactForStage(
       stage,
       taskDefArtifactInput.artifactId,
-      taskDefArtifactInput.artifact)
+      taskDefArtifactInput.artifact
+    )
 
     return taskDef
   }
@@ -128,7 +138,7 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
   }
 
   private static class TaskDefinitionArtifact {
-    private String artifactId
-    private Artifact artifact
+    @Nullable public String artifactId
+    @Nullable public Artifact artifact
   }
 }
