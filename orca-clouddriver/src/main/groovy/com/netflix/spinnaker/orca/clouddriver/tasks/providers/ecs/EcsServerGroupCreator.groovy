@@ -54,6 +54,22 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
       operation.credentials = operation.account
     }
 
+    if (operation.useTaskDefinitionArtifact) {
+      if (operation.taskDefinitionArtifact) {
+        operation.resolvedTaskDefinitionArtifact = getTaskDefArtifact(stage, operation.taskDefinitionArtifact)
+      } else {
+        throw new IllegalStateException("No task definition artifact found in context for operation.")
+      }
+
+      // container mappings are required for artifacts, so we know which container to add to what image
+      if (operation.containerMappings) {
+        def containerMappings = (ArrayList<Map<String, Object>>) operation.containerMappings
+        operation.containerToImageMap = getContainerToImageMap(containerMappings, stage)
+      } else {
+        throw new IllegalStateException("No container mappings for task definition artifact found in context for operation.")
+      }
+    }
+
     def imageDescription = (Map<String, Object>) operation.imageDescription
 
     if (imageDescription) {
@@ -64,14 +80,6 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
 
       if (bakeStage) {
         operation.dockerImageAddress = bakeStage.context.amiDetails.imageId.value.get(0).toString()
-      }
-    }
-
-    if (operation.useTaskDefinitionArtifact) {
-      if (operation.taskDefinitionArtifact) {
-        operation.resolvedTaskDefinitionArtifact = getTaskDefArtifact(stage, operation.taskDefinitionArtifact)
-      } else {
-        throw new IllegalStateException("No task definition artifact found in context for operation.")
       }
     }
 
@@ -96,6 +104,20 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
     )
 
     return taskDef
+  }
+
+  private Map<String, String> getContainerToImageMap(ArrayList<Map<String, Object>> mappings, Stage stage) {
+    def containerToImageMap = [:]
+
+    // each mapping is a name:imageDescription pair
+    mappings.each{
+      it.each { key, value ->
+        def imageValue = (Map<String, Object>) value
+        def resolvedImageAddress = getImageAddressFromDescription(imageValue, stage)
+        containerToImageMap.put(key, resolvedImageAddress)
+      }
+    }
+    return containerToImageMap
   }
 
   private String getImageAddressFromDescription(Map<String, Object> description, Stage givenStage) {

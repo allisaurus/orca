@@ -135,19 +135,45 @@ class EcsServerGroupCreatorSpec extends Specification {
 
   def "creates operation from taskDefinitionArtifact provided as an ID"() {
     given:
+    // define artifact inputs
     def testArtifactId = "aaaa-bbbb-cccc-dddd"
     def taskDefArtifact = [
       artifactId: testArtifactId
     ]
     Artifact resolvedArtifact = new Artifact().builder().type('s3/object').name('s3://testfile.json').build()
     mockResolver.getBoundArtifactForStage(stage, testArtifactId, null) >> resolvedArtifact
+    // define container mappings inputs
+    def (testReg,testRepo,testTag) = ["myregistry.io","myrepo","latest"]
+    def testDescription = [
+      fromTrigger: "true",
+      registry: testReg,
+      repository: testRepo,
+      tag: testTag
+    ]
+    def testMappings = []
+    def map1 = [
+      web:testDescription
+    ]
+    def map2 = [
+      logs:testDescription
+    ]
+    testMappings.add(map1)
+    testMappings.add(map2)
+
+    def containerToImageMap = [
+      web: "$testReg/$testRepo:$testTag",
+      logs: "$testReg/$testRepo:$testTag"
+    ]
+
+    // add inputs to stage context
     stage.execution = new Execution(ExecutionType.PIPELINE, 'ecs')
     stage.context.useTaskDefinitionArtifact = true
     stage.context.taskDefinitionArtifact = taskDefArtifact
-
+    stage.context.containerMappings = testMappings
 
     def expected = Maps.newHashMap(deployConfig)
     expected.resolvedTaskDefinitionArtifact = resolvedArtifact
+    expected.containerToImageMap = containerToImageMap
 
     when:
     def operations = creator.getOperations(stage)
