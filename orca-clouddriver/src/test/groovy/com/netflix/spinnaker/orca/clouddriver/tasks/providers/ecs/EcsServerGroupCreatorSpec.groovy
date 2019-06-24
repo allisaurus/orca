@@ -152,10 +152,12 @@ class EcsServerGroupCreatorSpec extends Specification {
     ]
     def testMappings = []
     def map1 = [
-      web:testDescription
+      containerName: "web",
+      imageDescription: testDescription
     ]
     def map2 = [
-      logs:testDescription
+      containerName: "logs",
+      imageDescription: testDescription
     ]
     testMappings.add(map1)
     testMappings.add(map2)

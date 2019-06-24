@@ -109,13 +109,12 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
   private Map<String, String> getContainerToImageMap(ArrayList<Map<String, Object>> mappings, Stage stage) {
     def containerToImageMap = [:]
 
-    // each mapping is a name:imageDescription pair
+    // each mapping should be in the shape { containerName: "", imageDescription: {}}
     mappings.each{
-      it.each { key, value ->
-        def imageValue = (Map<String, Object>) value
-        def resolvedImageAddress = getImageAddressFromDescription(imageValue, stage)
-        containerToImageMap.put(key, resolvedImageAddress)
-      }
+      def imageValue = (Map<String, Object>) it.imageDescription
+      def resolvedImageAddress = getImageAddressFromDescription(imageValue, stage)
+      def name = (String) it.containerName
+      containerToImageMap.put(name, resolvedImageAddress)
     }
     return containerToImageMap
   }
